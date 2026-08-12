@@ -1,7 +1,6 @@
 # ============================================================
 # PLACEMENT-READY AI CAREER AGENT
 # LangChain + Gemini + FAISS + FastAPI + LangServe
-# Render Deployment Ready
 # ============================================================
 
 import os
@@ -21,13 +20,20 @@ from langchain_google_genai import (
 )
 
 from langchain_core.documents import Document
-from langchain_core.runnables import RunnableLambda
+from langchain_core.runnables import (
+    RunnableLambda,
+    RunnablePassthrough
+)
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import StrOutputParser
+
 from langchain_community.vectorstores import FAISS
 from langchain_community.docstore.in_memory import InMemoryDocstore
 
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain.tools import tool
 from langchain.agents import create_agent
+
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 
 # ============================================================
@@ -41,7 +47,7 @@ GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
 if not GOOGLE_API_KEY:
     raise RuntimeError(
         "GOOGLE_API_KEY is missing. "
-        "Add GOOGLE_API_KEY in Render Environment Variables."
+        "Add it to Render Environment Variables."
     )
 
 
@@ -54,7 +60,7 @@ GEMINI_MODEL = os.getenv(
     "gemini-3-flash-preview"
 )
 
-print("Using Gemini model:", GEMINI_MODEL)
+print(f"Using Gemini model: {GEMINI_MODEL}")
 
 
 # ============================================================
@@ -81,6 +87,7 @@ PLACEMENT-READY AI CAREER KNOWLEDGE BASE
 DATA SCIENTIST
 
 Important skills:
+
 Python
 NumPy
 Pandas
@@ -94,6 +101,7 @@ Power BI
 Basic Deep Learning
 
 Typical projects:
+
 Customer churn prediction
 Sales forecasting
 Fraud detection
@@ -106,6 +114,7 @@ Customer segmentation
 DATA ANALYST
 
 Important skills:
+
 SQL
 Excel
 Python
@@ -113,9 +122,10 @@ Pandas
 Statistics
 Power BI
 Tableau
-Data Visualization
+Data visualization
 
 Typical projects:
+
 Sales dashboard
 Customer analysis
 Business intelligence dashboard
@@ -127,6 +137,7 @@ Customer segmentation
 PYTHON DEVELOPER
 
 Important skills:
+
 Python
 Object Oriented Programming
 SQL
@@ -137,6 +148,7 @@ Flask
 Django
 
 Typical projects:
+
 REST API
 Web application
 Automation system
@@ -147,6 +159,7 @@ Backend application
 MACHINE LEARNING ENGINEER
 
 Important skills:
+
 Python
 NumPy
 Pandas
@@ -160,6 +173,7 @@ Docker
 Git
 
 Typical projects:
+
 Image classification
 NLP application
 Recommendation system
@@ -170,6 +184,7 @@ Fraud detection
 SOFTWARE DEVELOPER
 
 Important skills:
+
 Programming
 Data Structures
 Algorithms
@@ -179,6 +194,7 @@ Git
 Problem Solving
 
 Placement preparation should include:
+
 Programming
 Data Structures
 Algorithms
@@ -212,6 +228,7 @@ Use meaningful repository names.
 Write a detailed README.
 
 Include:
+
 Project description
 Features
 Technologies
@@ -222,7 +239,9 @@ Architecture
 Results
 
 Keep repositories organized.
+
 Commit code regularly.
+
 Add deployment links when possible.
 
 
@@ -243,7 +262,7 @@ Aptitude
 Logical Reasoning
 Communication
 
-Students should be able to explain:
+Students should be able to clearly explain:
 
 1. Problem statement
 2. Technology used
@@ -268,7 +287,7 @@ print("Career knowledge base created.")
 
 
 # ============================================================
-# 5. SPLIT DOCUMENT
+# 5. SPLIT DOCUMENTS
 # ============================================================
 
 text_splitter = RecursiveCharacterTextSplitter(
@@ -278,7 +297,7 @@ text_splitter = RecursiveCharacterTextSplitter(
 
 chunks = text_splitter.split_documents(documents)
 
-print("Created", len(chunks), "knowledge chunks.")
+print(f"Created {len(chunks)} knowledge chunks.")
 
 
 # ============================================================
@@ -295,7 +314,7 @@ embeddings = GoogleGenerativeAIEmbeddings(
     google_api_key=GOOGLE_API_KEY
 )
 
-print("Embedding model:", EMBEDDING_MODEL)
+print(f"Embedding model: {EMBEDDING_MODEL}")
 
 
 # ============================================================
@@ -327,14 +346,92 @@ print("FAISS vector store created successfully.")
 
 
 # ============================================================
-# 8. CAREER SEARCH TOOL
+# 8. RETRIEVER
+# ============================================================
+
+retriever = vector_store.as_retriever(
+    search_kwargs={
+        "k": 3
+    }
+)
+
+
+# ============================================================
+# 9. FORMAT DOCUMENTS
+# ============================================================
+
+def format_docs(docs):
+
+    return "\n\n".join(
+        f"""
+SOURCE:
+{doc.metadata}
+
+CONTENT:
+{doc.page_content}
+"""
+        for doc in docs
+    )
+
+
+# ============================================================
+# 10. RAG PROMPT
+# ============================================================
+
+career_rag_prompt = ChatPromptTemplate.from_template(
+    """
+You are a Placement-Ready AI Career Assistant.
+
+Use ONLY the provided career knowledge to answer
+career-related questions.
+
+Do not invent information.
+
+If the information is not available,
+say that more information is required.
+
+Career Knowledge:
+
+{context}
+
+Student Question:
+
+{question}
+
+Give a practical, clear and concise answer.
+"""
+)
+
+
+# ============================================================
+# 11. RAG CHAIN
+# ============================================================
+
+career_rag_chain = (
+
+    {
+        "context": retriever | format_docs,
+        "question": RunnablePassthrough()
+    }
+
+    | career_rag_prompt
+    | llm
+    | StrOutputParser()
+
+)
+
+print("RAG chain created.")
+
+
+# ============================================================
+# 12. TOOL - CAREER SEARCH
 # ============================================================
 
 @tool
 def career_search(query: str) -> str:
     """
-    Search the career knowledge base for placement,
-    career skills, job roles, projects and preparation.
+    Search the career knowledge base for placement
+    skills, job roles, projects and preparation.
     """
 
     retrieved_docs = vector_store.similarity_search(
@@ -345,26 +442,26 @@ def career_search(query: str) -> str:
     if not retrieved_docs:
         return "No relevant career information found."
 
-    result = []
+    return "\n\n".join(
+        f"""
+SOURCE:
+{doc.metadata}
 
-    for doc in retrieved_docs:
-        result.append(
-            f"Source: {doc.metadata}\n"
-            f"Content: {doc.page_content}"
-        )
-
-    return "\n\n".join(result)
+CONTENT:
+{doc.page_content}
+"""
+        for doc in retrieved_docs
+    )
 
 
 # ============================================================
-# 9. JOB ROLE ANALYSIS TOOL
+# 13. TOOL - JOB ROLE ANALYSIS
 # ============================================================
 
 @tool
 def job_role_analysis(target_role: str) -> str:
     """
-    Analyze skills and interview topics required
-    for a target technology job role.
+    Analyze skills and interview topics for a target role.
     """
 
     role = target_role.lower().strip()
@@ -390,7 +487,7 @@ SQL
 Statistics
 Machine Learning
 Projects
-Problem Solving
+Problem solving
 """,
 
         "data analyst": """
@@ -485,7 +582,7 @@ Projects
     return roles.get(
         role,
         """
-No specific role profile found.
+No specific role profile was found.
 
 General placement skills:
 
@@ -505,7 +602,7 @@ Interview Preparation
 
 
 # ============================================================
-# 10. SKILL GAP ANALYSIS TOOL
+# 14. TOOL - SKILL GAP ANALYSIS
 # ============================================================
 
 @tool
@@ -514,8 +611,7 @@ def skill_gap_analysis(
     target_role: str
 ) -> str:
     """
-    Compare student skills with skills required
-    for the selected job role.
+    Compare student skills with target job role skills.
     """
 
     role = target_role.lower().strip()
@@ -615,7 +711,7 @@ TARGET ROLE:
 SKILL MATCH:
 {score}%
 
-MATCHING SKILLS:
+CURRENT MATCHING SKILLS:
 {", ".join(matched) if matched else "None"}
 
 SKILL GAPS:
@@ -623,14 +719,14 @@ SKILL GAPS:
 
 RECOMMENDATION:
 
-Focus on the missing skills.
-Build practical projects using the most
-important missing skills.
+Focus first on the missing skills.
+Build at least one practical project using
+the most important missing skills.
 """
 
 
 # ============================================================
-# 11. PROJECT ANALYSIS TOOL
+# 15. TOOL - PROJECT ANALYSIS
 # ============================================================
 
 @tool
@@ -639,8 +735,7 @@ def project_analysis(
     target_role: str
 ) -> str:
     """
-    Analyze student projects according to the
-    target placement role.
+    Analyze student projects according to target role.
     """
 
     return f"""
@@ -652,18 +747,18 @@ TARGET ROLE:
 STUDENT PROJECTS:
 {projects}
 
-Evaluate projects using:
+Evaluate each project using:
 
 1. Real-world problem
 2. Technical complexity
 3. Relevance to target role
 4. Technologies used
-5. Data/AI/Software concepts
+5. Machine Learning/Data/Software concepts
 6. GitHub documentation
 7. Deployment
 8. Results
 
-IMPROVEMENTS:
+PROJECT IMPROVEMENT RECOMMENDATIONS:
 
 - Add a clear README.
 - Explain the problem.
@@ -678,7 +773,7 @@ IMPROVEMENTS:
 
 
 # ============================================================
-# 12. GITHUB CHECK TOOL
+# 16. TOOL - GITHUB CHECK
 # ============================================================
 
 @tool
@@ -692,7 +787,6 @@ def github_check(username: str) -> str:
     if not username:
         return "GitHub username was not provided."
 
-    # FIXED GitHub API URL
     url = f"https://api.github.com/users/{username}"
 
     try:
@@ -706,11 +800,16 @@ def github_check(username: str) -> str:
         )
 
         if response.status_code == 404:
-            return f"GitHub user '{username}' was not found."
+
+            return (
+                f"GitHub user '{username}' "
+                "was not found."
+            )
 
         if response.status_code != 200:
+
             return (
-                "Unable to access GitHub profile. "
+                "Unable to access the GitHub profile. "
                 f"Status code: {response.status_code}"
             )
 
@@ -748,11 +847,14 @@ RECOMMENDATIONS:
 
     except requests.RequestException as error:
 
-        return f"GitHub request failed: {error}"
+        return (
+            "GitHub request failed: "
+            f"{str(error)}"
+        )
 
 
 # ============================================================
-# 13. TOOLS
+# 17. TOOLS
 # ============================================================
 
 tools = [
@@ -765,26 +867,24 @@ tools = [
 
 
 # ============================================================
-# 14. AGENT SYSTEM PROMPT
+# 18. AGENT SYSTEM PROMPT
 # ============================================================
 
 system_prompt = """
+
 You are a Placement-Ready AI Career Agent.
 
 Your purpose is to help college students prepare
 for technology placements.
 
-You can help with:
+The student can provide:
 
-- Career guidance
 - Resume information
 - Technical skills
-- Target job roles
+- Target job role
 - Projects
-- GitHub
-- Skill gap analysis
-- Interview preparation
-- Learning roadmaps
+- GitHub username
+- Career questions
 
 AVAILABLE TOOLS:
 
@@ -792,10 +892,10 @@ career_search:
 Search the career knowledge base.
 
 job_role_analysis:
-Identify skills and interview topics for a role.
+Identify skills and interview topics for a target role.
 
 skill_gap_analysis:
-Compare student skills with job requirements.
+Compare student skills with target job requirements.
 
 project_analysis:
 Evaluate student projects.
@@ -807,33 +907,20 @@ IMPORTANT RULES:
 
 1. Use tools when useful.
 2. Never invent student information.
-3. Do not claim the student has a skill unless provided.
+3. Do not claim a student has a skill unless provided.
 4. Give practical recommendations.
-5. Clearly identify skill gaps.
+5. Identify skill gaps clearly.
 6. Recommend relevant projects.
 7. Recommend a learning roadmap.
 8. Help with interview preparation.
-9. Keep answers clear and easy to understand.
+9. Keep responses easy to understand.
 10. Be honest when information is unavailable.
 
-When appropriate, structure the response as:
-
-PLACEMENT READINESS REPORT
-
-Target Role:
-Current Skills:
-Strong Skills:
-Skill Gaps:
-Project Analysis:
-GitHub Analysis:
-Learning Roadmap:
-Interview Preparation:
-Overall Recommendation:
 """
 
 
 # ============================================================
-# 15. CREATE LANGCHAIN AGENT
+# 19. CREATE LANGCHAIN AGENT
 # ============================================================
 
 career_agent = create_agent(
@@ -846,7 +933,7 @@ print("Placement AI Career Agent created.")
 
 
 # ============================================================
-# 16. FASTAPI APPLICATION
+# 20. FASTAPI APPLICATION
 # ============================================================
 
 app = FastAPI(
@@ -860,7 +947,7 @@ app = FastAPI(
 
 
 # ============================================================
-# 17. HOME PAGE
+# 21. HOME ROUTE
 # ============================================================
 
 @app.get("/")
@@ -877,7 +964,7 @@ def home():
 
 
 # ============================================================
-# 18. HEALTH CHECK
+# 22. HEALTH CHECK
 # ============================================================
 
 @app.get("/health")
@@ -889,7 +976,7 @@ def health():
 
 
 # ============================================================
-# 19. INPUT MODEL
+# 23. INPUT MODEL
 # ============================================================
 
 class AgentInput(BaseModel):
@@ -900,7 +987,7 @@ class AgentInput(BaseModel):
 
 
 # ============================================================
-# 20. FORMAT INPUT
+# 24. FORMAT INPUT
 # ============================================================
 
 def format_for_agent(x):
@@ -921,7 +1008,7 @@ def format_for_agent(x):
 
 
 # ============================================================
-# 21. EXTRACT AGENT RESPONSE
+# 25. EXTRACT FINAL RESPONSE
 # ============================================================
 
 def extract_text_response(agent_output):
@@ -939,6 +1026,7 @@ def extract_text_response(agent_output):
                 isinstance(value, dict)
                 and "messages" in value
             ):
+
                 messages = value["messages"]
                 break
 
@@ -953,7 +1041,6 @@ def extract_text_response(agent_output):
         str(last_message)
     )
 
-    # Gemini may return content as a list
     if isinstance(content, list):
 
         text_parts = []
@@ -971,7 +1058,10 @@ def extract_text_response(agent_output):
                     )
 
             else:
-                text_parts.append(str(item))
+
+                text_parts.append(
+                    str(item)
+                )
 
         return "\n".join(text_parts)
 
@@ -979,13 +1069,17 @@ def extract_text_response(agent_output):
 
 
 # ============================================================
-# 22. LANGSERVE CHAIN
+# 26. LANGSERVE CHAIN
 # ============================================================
 
 formatted_agent_chain = (
+
     RunnableLambda(format_for_agent)
+
     | career_agent
+
     | RunnableLambda(extract_text_response)
+
 ).with_types(
     input_type=AgentInput,
     output_type=str
@@ -993,7 +1087,7 @@ formatted_agent_chain = (
 
 
 # ============================================================
-# 23. LANGSERVE ROUTE
+# 27. LANGSERVE ROUTE
 # ============================================================
 
 add_routes(
@@ -1005,10 +1099,12 @@ add_routes(
 
 
 # ============================================================
-# 24. LOCAL SERVER
+# 28. LOCAL SERVER
 # ============================================================
 
 if __name__ == "__main__":
+
+    import uvicorn
 
     port = int(
         os.environ.get(
@@ -1018,7 +1114,7 @@ if __name__ == "__main__":
     )
 
     uvicorn.run(
-        app,
+        "app:app",
         host="0.0.0.0",
         port=port
     )
