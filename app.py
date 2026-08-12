@@ -1099,19 +1099,11 @@ add_routes(
 
 
 # ============================================================
-# 28. LOCAL SERVER
+# 28. START SERVER
 # ============================================================
 
 if __name__ == "__main__":
-
-    import uvicorn
-
-    port = int(
-        os.environ.get(
-            "PORT",
-            "8000"
-        )
-    )
+    port = int(os.environ.get("PORT", "8000"))
 
     uvicorn.run(
         "app:app",
