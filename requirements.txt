@@ -1,16 +1,16 @@
 fastapi
-uvicorn
+uvicorn[standard]
 gunicorn
-python-dotenv
 
 langchain
 langchain-core
 langchain-community
-langchain-text-splitters
 langchain-google-genai
+langchain-text-splitters
 langserve
 
 faiss-cpu
 pydantic
+python-dotenv
 requests
 sse-starlette
